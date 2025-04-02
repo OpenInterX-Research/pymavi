@@ -11,7 +11,7 @@ class MaviClient:
         HOUR_SECONDS (int): The number of seconds in an hour (3600)
     """
     
-    HOUR_SECONDS = 86400
+    HOUR_SECONDS = 3600
     
     def __init__(self, api_key):
         """Initializes the MaviClient with the given API key
