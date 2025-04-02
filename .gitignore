@@ -176,4 +176,4 @@ cython_debug/
 *.mov
 
 # Test files
-./src/test.py
+src/test.py
