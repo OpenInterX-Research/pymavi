@@ -1,8 +1,9 @@
 """Mavi API Client implementation."""
 
 import time
-from typing import List, Optional, Union, Dict, Any
+from typing import List, Optional, Union, Dict, Generator, Any
 import requests
+import json
 from .exceptions import MaviAuthenticationError, MaviAPIError, MaviValidationError
 
 class MaviClient:
@@ -76,7 +77,7 @@ class MaviClient:
         video_name: str,
         video_path: str,
         callback_uri: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> str:
         """Upload a video to the Mavi platform.
         
         Args:
@@ -85,7 +86,7 @@ class MaviClient:
             callback_uri (str, optional): Public callback URL for processing results
             
         Returns:
-            Dict[str, Any]: Upload response containing video details
+            str: Video ID assigned by Mavi
             
         Raises:
             MaviValidationError: If the video file doesn't exist or is invalid
@@ -95,7 +96,8 @@ class MaviClient:
             with open(video_path, "rb") as video_file:
                 files = {"file": (video_name, video_file, "video/mp4")}
                 params = {"callBackUri": callback_uri} if callback_uri else None
-                return self._make_request("POST", "upload", files=files, params=params)
+                content = self._make_request("POST", "upload", files=files, params=params)
+                return content['data']['videoNo']
         except FileNotFoundError:
             raise MaviValidationError(f"Video file not found: {video_path}")
     
@@ -107,22 +109,34 @@ class MaviClient:
         range_bucket: int = 1,
         num_results: int = 10
     ) -> Dict[str, Any]:
-        """Search for videos in the Mavi database.
+        """Searches the Mavi database for videos matching the given specifications.
         
         Args:
-            start_time (int, optional): Start time in milliseconds since epoch
-            end_time (int, optional): End time in milliseconds since epoch
-            video_status (str): Status of videos to search for
-            range_bucket (int): Page number for pagination
-            num_results (int): Number of results per page
-            
+            start_time (int, optional): The start time in milliseconds since epoch, default is 1 week ago
+            end_time (int, optional): The end time in milliseconds since epoch, default is now
+            video_status (str, optional): The status of the video, default is "PARSE" (finished processing)
+            num_results (int, optional): The number of results to return, default is 20
+            page (int, optional): The range bucket for the search, default is 1. 
+                The page is which “page” of results to return. I.e., if num_results=10,
+                page=2, the function will return results 10-19.
+        
         Returns:
-            Dict[str, Any]: Search results
+            dict: A dictionary indexed by the video IDs and containing their metadata as a dictionary
+                1. videoName (str): The name of the video
+                2. videoStatus (str): The status of the video
+                3. uploadTime (int): The upload time of the video in milliseconds since epoch
+        
+        Example:
+            search_video_metadata(start_time=int((time.time()-HOUR_SECONDS*2)*1000), end_time=int(time.time()*1000),
+                                  video_status="PARSE", page=2, num_results=20)
+            
+            This will search for videos that were uploaded between 2 hours ago and now, that are
+            finished processing, and will return results 20-39.
         """
         if start_time is None:
-            start_time = int((time.time() - self.HOUR_SECONDS * 24 * 7) * 1000)
+            start_time = int((time.time() - self.HOUR_SECONDS * 24 * 7) * 1000) # 1 week ago
         if end_time is None:
-            end_time = int(time.time() * 1000)
+            end_time = int(time.time() * 1000) # now
             
         params = {
             "startTime": start_time,
@@ -132,39 +146,81 @@ class MaviClient:
             "pageSize": num_results
         }
         
-        return self._make_request("GET", "searchDB", params=params)
+        content = self._make_request("GET", "searchDB", params=params)
     
-    def search_video(self, search_query: str) -> Dict[str, Any]:
-        """Search videos using natural language query.
+        videos = dict()
+        for vid in content['data']['videoData']:
+            videos[vid['videoNo']] = {
+                "videoName": vid['videoName'],
+                "videoStatus": vid['videoStatus'],
+                "uploadTime": vid['uploadTime']
+            }
+        return videos
+    
+    def search_video(
+        self,
+        search_query: str
+    ) -> Dict[str, Any]:
+        """Searches all videos from a natural language query and ranks results within milliseconds.
         
         Args:
-            search_query (str): Natural language search query
+            search_query (str): The natural language query used to search the videos
             
         Returns:
-            Dict[str, Any]: Search results
+            dict: A dictionary indexed by the video IDs and containing their metadata as a dictionary
+                1. videoName (str): The name of the video
+                2. videoStatus (str): The status of the video
+                3. uploadTime (int): The upload time of the video in milliseconds since epoch
+            
+        Example:
+            search_video("find me videos with cars")
+            This will search for videos that have cars in them.
         """
         data = {"searchValue": search_query}
-        return self._make_request("POST", "searchAI", json=data)
+        content = self._make_request("POST", "searchAI", json=data)
+        videos = dict()
+        for vid in content['data']['videos']:
+            videos[vid['videoNo']] = {
+                "videoName": vid['videoName'],
+                "videoStatus": vid['videoStatus'],
+                "uploadTime": vid['uploadTime']
+            }
+        return videos
     
     def search_key_clip(
         self,
         search_query: str,
         video_ids: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """Search for specific clips within videos.
+    ) -> List[Dict[str, Any]]:
+        """Retrieves the most relevant clips within one or multiple videos provided, sorted by relevance.
         
         Args:
-            search_query (str): Natural language search query
-            video_ids (List[str], optional): List of video IDs to search within
+            video_ids (list): A list of video IDs to search within, default is an empty list to search all videos
+            search_query (str): The natural language query used to search the videos
             
         Returns:
-            Dict[str, Any]: Search results
+            list: A list of dictionaries containing the metadata of the clips
+                1. videoNo (str): The ID of the video
+                2. videoName (str): The name of the video
+                3. fragmentStartTime (int): The start time of the clip in milliseconds since epoch
+                4. fragmentEndTime (int): The end time of the clip in milliseconds since epoch
         """
         data = {
             "videoNos": video_ids or [],
             "searchValue": search_query
         }
-        return self._make_request("POST", "searchVideoFragment", json=data)
+        content = self._make_request("POST", "searchVideoFragment", json=data)
+        
+        clips = []
+        for clip in content['data']['videos']:
+            clips.append({
+                "videoNo": clip['videoNo'],
+                "videoName": clip['videoName'],
+                "fragmentStartTime": clip['fragmentStartTime'],
+                "fragmentEndTime": clip['fragmentEndTime'],
+                "duration": clip['duration'],
+            })
+        return clips
     
     def chat_with_videos(
         self,
@@ -172,33 +228,193 @@ class MaviClient:
         message: str,
         history: Optional[List[Dict[str, str]]] = None,
         stream: bool = False
-    ) -> Union[str, Dict[str, Any]]:
+    ) -> Union[str, Generator[str]]:
         """Chat with an AI assistant about specific videos.
         
         Args:
             video_nos (List[str]): List of video IDs to chat about
             message (str): Message to send to the AI assistant
-            history (List[Dict[str, str]], optional): Chat history for context
-            stream (bool): Whether to stream the response
+            history (List[Dict[str, str]], optional): Chat history for context, default is None
+            stream (bool, optional): Whether to stream the response, default is False
             
         Returns:
-            Union[str, Dict[str, Any]]: AI assistant's response
+            Union[str, Generator]: The AI assistant's response or a generator for streaming responses
         """
+        
+        url = self.base_url + "chat"
+        headers = {"Authorization": self.api_key}
+            
         data = {
             "videoNos": video_nos,
             "message": message,
             "history": history or [],
             "stream": stream
         }
-        return self._make_request("POST", "chat", json=data)
+        if stream:
+            return self._stream_response(url, headers, data)
+        else:
+            return self._get_full_response(url, headers, data)
     
-    def delete_video(self, video_ids: List[str]) -> Dict[str, Any]:
+    def _stream_response(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        data: Dict[str, Any]
+    ) -> Generator[str]:
+        """Helper method to handle streaming responses
+        
+        Args:
+            data (Dict[str, Any]): Data to send in the request
+            
+        Returns:
+            Generator[str]: A generator yielding chunks of the response
+        """
+        try:
+            response = requests.post(url, json=data, headers=headers, stream=True)
+            response.raise_for_status()
+
+            # Accumulate chunks into a buffer
+            buffer = ""
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:  # Filter out keep-alive new chunks
+                    try:
+                        # Decode the chunk as UTF-8 and add it to the buffer
+                        decoded_chunk = chunk.decode('utf-8').strip()
+                        buffer += decoded_chunk
+                        
+                        # Remove the "data:" prefix if it exists
+                        if buffer.startswith("data:"):
+                            buffer = buffer[5:].strip()
+
+                        # Attempt to parse the buffer as JSON
+                        while True:
+                            try:
+                                json_data, index = json.JSONDecoder().raw_decode(buffer)
+                                buffer = buffer[index:].strip()  # Remove the parsed part from the buffer
+                                # Process JSON data
+                                if json_data.get('code') != '0000':
+                                    return json_data.get('code', ""), json_data.get('msg', "")
+                                else:
+                                    yield json_data.get('data', {}).get('msg', "")
+                            except json.JSONDecodeError:
+                                # Wait for more chunks if JSON is incomplete
+                                break
+                    except UnicodeDecodeError:
+                        continue # Skip invalid UTF-8 sequences
+        except requests.exceptions.RequestException as e:
+            return e
+        finally:
+            if 'response' in locals():
+                response.close()
+    
+    def _get_full_response(
+        self,
+        url: str,
+        headers: Dict[str, str],
+        data: Dict[str, Any]
+    ) -> str:
+        """Helper method to handle non-streaming responses
+        
+        Args:
+            data (Dict[str, Any]): Data to send in the request
+            
+        Returns:
+            str: The full response from the AI assistant
+        """
+        try:
+            response = requests.post(url, json=data, headers=headers)
+            response.raise_for_status()
+            
+            # Remove the "data:" prefix if it exists
+            if response.text.startswith("data:"):
+                content = response.text[5:].strip()
+            else:
+                content = response.text
+            content = json.loads(content)
+            if content.get('code') != '0000':
+                return content.get('code', ""), content.get('msg', "")
+            else:
+                return content.get('data', {}).get('msg', "")
+        except requests.exceptions.RequestException as e:
+            return e
+        
+    def transcribe_video(
+        self, 
+        video_id: str, 
+        transcribe_type: str = "AUDIO", 
+        callback_URI: Optional[str] = None
+    ) -> str:
+        """Transcription API converts visual and audio content of the video into text representations. 
+        You can transcribe an uploaded video in two ways:
+            AUDIO: Transcribing the video's audio content into text.
+            VIDEO: Transcribing the video's visual content into text.
+        
+
+        Args:
+            video_id (str): The ID of the video to transcribe
+            transcribe_type (str): The type of transcription, either "AUDIO" or "VIDEO". Default is "AUDIO"
+            callback_URI (str, optional): public callback URL. Ensure that the callback URL is publicly
+                accessible, as the resolution results will be sent to this address via a POST
+                request.
+                
+        Returns:
+            str: The task ID for the transcription request
+        """
+        
+        data = {
+            "videoNo": video_id,
+            "type": transcribe_type,
+            "callBackURI": callback_URI if callback_URI else None
+        }
+                
+        content = self._make_request("POST", "subTranscription", json=data)        
+        return content['data']['taskNo']
+    
+    def get_transcription(
+        self,
+        taskNo: str
+    ) -> Dict[str, Any]:
+        """Get the transcription results for a given task ID.
+        
+        Args:
+            taskNo (str): The task ID for the transcription request
+            
+        Returns:
+            Dict[str, Any]: The transcription results in the format:
+                {
+                    "status": ("FINISHED" or "UNFINISHED"),
+                    "type": ("AUDIO" or "VIDEO"),
+                    "videoNo": video_id,
+                    "taskNo": taskNo,
+                    "transcriptions": [
+                        {
+                            "id": transcription_id,
+                            "startTime": start_time,
+                            "endTime": end_time,
+                            "content": transcription_text
+                        },
+                        ...
+                    ]
+                }
+        """
+        params = {
+            "taskNo": taskNo
+        }
+        
+        content = self._make_request("GET", "getTranscription", params=params)      
+        return content['data']
+    
+    def delete_video(
+        self,
+        video_ids: List[str]
+    ) -> None:
         """Delete videos from the Mavi platform.
         
         Args:
             video_ids (List[str]): List of video IDs to delete
             
         Returns:
-            Dict[str, Any]: Deletion response
+            None
         """
-        return self._make_request("DELETE", "delete", json=video_ids) 
+        self._make_request("DELETE", "delete", json=video_ids)
+        

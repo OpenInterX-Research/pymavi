@@ -113,7 +113,6 @@ class MaviClient:
             
         Example:
             search_video("find me videos with cars")
-            
             This will search for videos that have cars in them.
         """
         
@@ -282,6 +281,11 @@ class MaviClient:
         }
         
         response = requests.post(url, json=data, headers=headers)
+        content = response.json()
+        
+        '''
+        INCOMPLETE, IGNORE
+        '''
     
     def delete_video(self, video_ids):
         """Deletes a video from the Mavi database
