@@ -50,7 +50,7 @@ The main client class for interacting with the Mavi API.
 
 #### Methods
 
-- `upload_video(video_name: str, video_path: str, callback_uri: Optional[str] = None) -> Dict[str, Any]`
+- `upload_video(video_path: str, callback_uri: Optional[str] = None) -> Dict[str, Any]`
 - `search_video_metadata(start_time: Optional[int] = None, end_time: Optional[int] = None, video_status: str = "PARSE", range_bucket: int = 1, num_results: int = 10) -> Dict[str, Any]`
 - `search_video(search_query: str) -> Dict[str, Any]`
 - `search_key_clip(search_query: str, video_ids: Optional[List[str]] = None) -> Dict[str, Any]`
