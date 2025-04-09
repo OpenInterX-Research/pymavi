@@ -228,7 +228,7 @@ class MaviClient:
         message: str,
         history: Optional[List[Dict[str, str]]] = None,
         stream: bool = False
-    ) -> Union[str, Generator[str]]:
+    ) -> Union[str, Generator[str, None, None]]:
         """Chat with an AI assistant about specific videos.
         
         Args:
@@ -260,7 +260,7 @@ class MaviClient:
         url: str,
         headers: Dict[str, str],
         data: Dict[str, Any]
-    ) -> Generator[str]:
+    ) -> Generator[str, None, None]:
         """Helper method to handle streaming responses
         
         Args:
