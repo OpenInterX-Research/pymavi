@@ -177,6 +177,4 @@ cython_debug/
 
 # Test files
 src/test.py
-
-# Old files
-src/maviclient.py
+test.py

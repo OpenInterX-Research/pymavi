@@ -74,14 +74,12 @@ class MaviClient:
     
     def upload_video(
         self,
-        video_name: str,
         video_path: str,
         callback_uri: Optional[str] = None
     ) -> str:
         """Upload a video to the Mavi platform.
         
         Args:
-            video_name (str): Name to store the video under
             video_path (str): Path to the video file
             callback_uri (str, optional): Public callback URL for processing results
             
@@ -94,7 +92,7 @@ class MaviClient:
         """
         try:
             with open(video_path, "rb") as video_file:
-                files = {"file": (video_name, video_file, "video/mp4")}
+                files = {"file": (video_file.name, video_file, "video/mp4")}
                 params = {"callBackUri": callback_uri} if callback_uri else None
                 content = self._make_request("POST", "upload", files=files, params=params)
                 return content['data']['videoNo']
