@@ -18,7 +18,6 @@ client = MaviClient(api_key="your_api_key")
 
 # Upload a video
 response = client.upload_video(
-    video_name="my_video",
     video_path="path/to/video.mp4",
     callback_uri="https://your-callback-url.com/webhook"
 )
