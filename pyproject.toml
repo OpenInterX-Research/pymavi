@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pymavi"
+version = "0.1.0"
+description = "Python SDK for the Mavi Video AI Platform"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "OpenInterX", email = "support@openinterx.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "certifi==2025.1.31",
+    "charset-normalizer==3.4.1",
+    "idna==3.10",
+    "python-dotenv==1.1.0",
+    "requests==2.32.3",
+    "setuptools==75.8.0",
+    "urllib3==2.3.0",
+    "wheel==0.45.1",
+    "yt-dlp==2025.2.19"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/OpenInterX/pymavi"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
