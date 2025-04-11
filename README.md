@@ -55,6 +55,8 @@ The main client class for interacting with the Mavi API.
 - `search_video(search_query: str) -> Dict[str, Any]`
 - `search_key_clip(search_query: str, video_ids: Optional[List[str]] = None) -> Dict[str, Any]`
 - `chat_with_videos(video_nos: List[str], message: str, history: Optional[List[Dict[str, str]]] = None, stream: bool = False) -> Union[str, Dict[str, Any]]`
+- `transcribe_video(video_id: str, transcribe_type: str = "AUDIO", callback_uri: Optional[str] = None) -> str`
+- `get_transcription(taskNo: str) -> Dict[str, Any]:`
 - `delete_video(video_ids: List[str]) -> Dict[str, Any]`
 
 ### Exceptions

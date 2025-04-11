@@ -340,7 +340,7 @@ class MaviClient:
         self, 
         video_id: str, 
         transcribe_type: str = "AUDIO", 
-        callback_URI: Optional[str] = None
+        callback_uri: Optional[str] = None
     ) -> str:
         """Transcription API converts visual and audio content of the video into text representations. 
         You can transcribe an uploaded video in two ways:
@@ -351,7 +351,7 @@ class MaviClient:
         Args:
             video_id (str): The ID of the video to transcribe
             transcribe_type (str): The type of transcription, either "AUDIO" or "VIDEO". Default is "AUDIO"
-            callback_URI (str, optional): public callback URL. Ensure that the callback URL is publicly
+            callback_uri (str, optional): public callback URL. Ensure that the callback URL is publicly
                 accessible, as the resolution results will be sent to this address via a POST
                 request.
                 
@@ -362,10 +362,11 @@ class MaviClient:
         data = {
             "videoNo": video_id,
             "type": transcribe_type,
-            "callBackURI": callback_URI if callback_URI else None
+            "callBackUri": callback_uri if callback_uri else None
         }
                 
-        content = self._make_request("POST", "subTranscription", json=data)        
+        content = self._make_request("POST", "subTranscription", json=data)      
+        print(content)  
         return content['data']['taskNo']
     
     def get_transcription(
