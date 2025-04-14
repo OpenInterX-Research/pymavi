@@ -4,7 +4,7 @@ import time
 from typing import List, Optional, Union, Dict, Generator, Any
 import requests
 import json
-from .exceptions import MaviAuthenticationError, MaviAPIError, MaviValidationError
+from .exceptions import *
 
 class MaviClient:
     """Client for interacting with the Mavi Video AI Platform API.
@@ -64,10 +64,28 @@ class MaviClient:
         try:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
-            return response.json()
+            response = response.json()
+            
+            # Check code in the response
+            code = response.get('code')
+            if code == '0429':
+                raise MaviBusySystemError("Mavi server is busy, please try again later")
+            if code == '409':
+                raise MaviDuplicateError("Duplicate request detected")
+            if code == '403':
+                raise MaviDisabledAccountError("Your account is disabled. Please contact support.")
+            if code != '0000':
+                raise MaviAPIError(f"API request failed: {response.get('msg', 'Unknown error')}")
+            
         except requests.exceptions.HTTPError as e:
             if response.status_code == 401:
                 raise MaviAuthenticationError("Invalid API key") from e
+            if response.status_code == 429:
+                raise MaviBusySystemError("Mavi server is busy, please try again later") from e
+            if response.status_code == 409:
+                raise MaviDuplicateError("Duplicate request detected") from e
+            if response.status_code == 403:
+                raise MaviDisabledAccountError("Your account is disabled. Please contact support.") from e
             raise MaviAPIError(f"API request failed: {response.text}") from e
         except requests.exceptions.RequestException as e:
             raise MaviAPIError(f"Request failed: {str(e)}") from e
