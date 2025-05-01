@@ -1,7 +1,8 @@
 """Mavi API Client implementation."""
 
+import os
 import time
-from typing import List, Optional, Union, Dict, Generator, Any
+from typing import List, Optional, Union, Dict, Generator, Tuple, Any
 import requests
 import json
 from .exceptions import *
@@ -65,18 +66,9 @@ class MaviClient:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
             response = response.json()
-            
-            # Check code in the response
-            code = response.get('code')
-            if code == '0429':
-                raise MaviBusySystemError("Mavi server is busy, please try again later")
-            if code == '409':
-                raise MaviDuplicateError("Duplicate request detected")
-            if code == '403':
-                raise MaviDisabledAccountError("Your account is disabled. Please contact support.")
-            if code != '0000':
-                raise MaviAPIError(f"API request failed: {response.get('msg', 'Unknown error')}")
-            
+            return response
+        except json.JSONDecodeError:
+            raise MaviAPIError("Failed to decode JSON response") from None
         except requests.exceptions.HTTPError as e:
             if response.status_code == 401:
                 raise MaviAuthenticationError("Invalid API key") from e
@@ -94,7 +86,7 @@ class MaviClient:
         self,
         video_path: str,
         callback_uri: Optional[str] = None
-    ) -> str:
+    ) -> Tuple[str, str]:
         """Upload a video to the Mavi platform.
         
         Args:
@@ -102,7 +94,7 @@ class MaviClient:
             callback_uri (str, optional): Public callback URL for processing results
             
         Returns:
-            str: Video ID assigned by Mavi
+            tuple: A tuple containing the video ID and the video name assigned by Mavi
             
         Raises:
             MaviValidationError: If the video file doesn't exist or is invalid
@@ -113,17 +105,47 @@ class MaviClient:
                 files = {"file": (video_file.name, video_file, "video/mp4")}
                 params = {"callBackUri": callback_uri} if callback_uri else None
                 content = self._make_request("POST", "upload", files=files, params=params)
-                return content['data']['videoNo']
+                return (content['data']['videoNo'], content['data']['videoName'])
         except FileNotFoundError:
             raise MaviValidationError(f"Video file not found: {video_path}")
+    
+    def upload_video_from_url(
+        self,
+        video_url: str,
+        callback_uri: Optional[str] = None
+    ) -> Tuple[str, str]:
+        """Upload a video from a URL to the Mavi platform.
+        
+        Args:
+            video_url (str): URL of the video file
+            callback_uri (str, optional): Public callback URL for processing results
+            
+        Returns:
+            tuple: A tuple containing the video ID and the video name assigned by Mavi
+            
+        Raises:
+            MaviValidationError: If the video URL is invalid
+            MaviAPIError: If the upload fails
+        """
+        data = {
+            "url": video_url,
+        }
+        
+        params = {
+            "callBackUri": callback_uri if callback_uri else None
+        }            
+        
+        content = self._make_request("POST", "uploadUrl", json=data, params=params)
+        return (content['data']['videoNo'], content['data']['videoName'])
     
     def search_video_metadata(
         self,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
-        video_status: str = "PARSE",
-        range_bucket: int = 1,
-        num_results: int = 10
+        video_status: Optional[str] = "PARSE",
+        video_name: Optional[str] = None,
+        range_bucket: Optional[int] = 1,
+        num_results: Optional[int] = 10
     ) -> Dict[str, Any]:
         """Searches the Mavi database for videos matching the given specifications.
         
@@ -131,6 +153,7 @@ class MaviClient:
             start_time (int, optional): The start time in milliseconds since epoch, default is 1 week ago
             end_time (int, optional): The end time in milliseconds since epoch, default is now
             video_status (str, optional): The status of the video, default is "PARSE" (finished processing)
+            video_name (str, optional): The name of the video to search for, default is None
             num_results (int, optional): The number of results to return, default is 20
             page (int, optional): The range bucket for the search, default is 1. 
                 The page is which “page” of results to return. I.e., if num_results=10,
@@ -158,6 +181,7 @@ class MaviClient:
             "startTime": start_time,
             "endTime": end_time,
             "videoStatus": video_status,
+            "videoName": video_name if video_name else None,
             "page": range_bucket,
             "pageSize": num_results
         }
@@ -175,12 +199,14 @@ class MaviClient:
     
     def search_video(
         self,
-        search_query: str
+        search_query: str,
+        limit: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Searches all videos from a natural language query and ranks results within milliseconds.
         
         Args:
             search_query (str): The natural language query used to search the videos
+            limit (int, optional): The maximum number of results to return, default is None for all results
             
         Returns:
             dict: A dictionary indexed by the video IDs and containing their metadata as a dictionary
@@ -192,7 +218,10 @@ class MaviClient:
             search_video("find me videos with cars")
             This will search for videos that have cars in them.
         """
-        data = {"searchValue": search_query}
+        data = {
+            "searchValue": search_query,
+            "limit": limit if limit else None
+            }
         content = self._make_request("POST", "searchAI", json=data)
         videos = dict()
         for vid in content['data']['videos']:
@@ -206,13 +235,15 @@ class MaviClient:
     def search_key_clip(
         self,
         search_query: str,
-        video_ids: Optional[List[str]] = None
+        video_ids: List[str],
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Retrieves the most relevant clips within one or multiple videos provided, sorted by relevance.
         
         Args:
-            video_ids (list): A list of video IDs to search within, default is an empty list to search all videos
+            video_ids (list): A list of video IDs to search within, need a minimum of 1 video ID
             search_query (str): The natural language query used to search the videos
+            limit (int, optional): The maximum number of results to return, default is None for all results
             
         Returns:
             list: A list of dictionaries containing the metadata of the clips
@@ -222,8 +253,9 @@ class MaviClient:
                 4. fragmentEndTime (int): The end time of the clip in milliseconds since epoch
         """
         data = {
-            "videoNos": video_ids or [],
-            "searchValue": search_query
+            "videoNos": video_ids,
+            "searchValue": search_query,
+            "limit": limit if limit else None
         }
         content = self._make_request("POST", "searchVideoFragment", json=data)
         
